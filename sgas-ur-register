@@ -1,0 +1,26 @@
+#!/usr/bin/env python
+
+from twisted.internet import reactor
+
+from sgas.client import config, commands, util
+
+
+
+def main():
+
+    cfg = config.URRegistrationOptions()
+    cfg.parseOptions()
+    #print cfg['url'], cfg['urfiles']
+
+    def registrationComplete(_):
+        print "Usage records registered."
+
+    d = commands.registerUsageRecords(cfg['url'], cfg['urfiles'], cfg['key'], cfg['cert'], cfg['cadir'])
+    d.addCallback(registrationComplete)
+    return d
+
+
+if __name__ == '__main__':
+    reactor.callWhenRunning(util.wrapMain, main)
+    reactor.run()
+

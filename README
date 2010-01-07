@@ -1,0 +1,38 @@
+SGAS LUTS3 Client
+
+== Installation ==
+
+python setup.py install
+
+Or just unpack and use it from the directory.
+
+
+
+== Usage ==
+
+* To register usage records to an SGAS instance:
+
+sgas-ur-register <url> <urfile1> [<urfile2> ...]
+
+e.g.,
+
+sgas-ur-register https://orval.grid.aau.dk:7143/sgas ur1.xml
+
+By default the host certificate will be used. It is possible to use other
+certs. Run "sgas-ur-register --help" for more information.
+
+
+* To update old document versions:
+
+sgas-ur-update <couchdb-url>
+
+e.g.,
+
+./sgas-ur-update http://localhost:7984/usagerecords
+
+Note that it must point to the CouchDB database.
+
+It is recommended to create a replica database and try the operations on that
+first.
+
+

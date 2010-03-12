@@ -1,0 +1,132 @@
+#!/usr/bin/env python
+
+# SGAS CouchDB migration script
+#
+# This script will read all document/records from one database, change the _id
+# field to smaller one (created by a hash from the record_id value) and insert
+# the changed records into a new database. No changes will be done to the
+# original database.
+#
+# Please do not try and have the same source and target database.
+#
+# usage: sgas-db-migrate http://localhost:5984/oldcollection http://localhost:5984/newcollection
+# (make sure the new database is created before starting)
+
+
+import sys
+import hashlib
+from itertools import product, chain, starmap
+
+from twisted.internet import reactor, defer
+
+from sgas.common import couchdb, baseconvert
+
+
+HEX_ALPHABET = '0123456789abcdef'
+
+
+# copied from sgas.server.usagerecord
+# new-style hash, produces smaller/faster b-trees in couchdb
+def _create12byteb62hash(record_id):
+    sha_160_hex = hashlib.sha1(record_id).hexdigest()
+    sha_160 = int(sha_160_hex, 16)
+    b62_12byte_max_length = 62**12
+    b62_hash = baseconvert.base10to62(sha_160 % b62_12byte_max_length)
+    return b62_hash
+
+
+
+def convertRecord(record):
+
+    new_id = _create12byteb62hash(record['record_id'])
+#    print new_id
+    record['_id'] = new_id
+    record['convert_version'] = 4
+    return record
+
+
+@defer.inlineCallbacks
+def main():
+
+    if len(sys.argv) < 3:
+        reactor.stop()
+        raise SystemExit("Not enough arguments")
+
+    if sys.argv[1] == sys.argv[2]:
+        reactor.stop()
+        raise SystemExit("Can't have identical source and target databases")
+
+    source_db_url = sys.argv[1]
+    target_db_url = sys.argv[2]
+
+    print "Source:", source_db_url
+    print "Target:", target_db_url
+
+    source_db = couchdb.Database(source_db_url)
+    target_db = couchdb.Database(target_db_url)
+
+    total_rows = None
+    total_converted = 0
+
+    print "Fetching _id list"
+    all_keys = {}
+    all_doc_ids = yield source_db.listDocuments()
+    for row in all_doc_ids['rows']:
+        all_keys[row['key']] = 0
+    print "N _ids:", len(all_keys)
+
+    # key creation
+    def ejoin(*args):
+        key = ''.join(args)
+        return key, key + '\u9999'
+
+    # construct iterator for start and endkeys
+    hex_iterator = starmap(ejoin, product(HEX_ALPHABET, repeat=2))
+    remainder_iterator = [('g', '\u9999')]
+    key_iterator = chain(hex_iterator, remainder_iterator)
+
+#    for kl in itertools_product(HEX_ALPHABET, repeat=2):
+#       key = ''.join(kl)
+#    for startkey, endkey in [ ('000','000\u9999'), ('001','001\u9999') ]:
+    for startkey, endkey in key_iterator:
+        #print startkey, endkey
+        converted_records = []
+        docs = yield source_db.retrieveDocuments(startkey=startkey, endkey=endkey)
+        if total_rows is None:
+            total_rows = docs['total_rows']
+            print "Number of rows to migrate:", total_rows
+        n_rows = len(docs['rows'])
+        sys.stdout.write(str(n_rows))
+        sys.stdout.flush()
+        for row in docs['rows']:
+            doc = row['doc']
+            all_keys[doc['_id']] += 1
+            #print doc
+            if 'record_id' in doc:
+                converted_doc = convertRecord(doc)
+            else: # this is for design documents
+                print "D", doc
+                converted_doc = doc
+            converted_records.append(converted_doc)
+
+        _ = yield target_db.insertDocuments(converted_records)
+        total_converted += n_rows
+
+        sys.stdout.write('.')
+        sys.stdout.flush()
+
+    print
+
+    print "rows converted", total_converted
+#    for key in sorted(all_keys):
+#        if all_keys[key] == 0:
+#            print key
+
+    reactor.stop()
+
+
+if __name__ == '__main__':
+    reactor.callWhenRunning(main)
+    reactor.run()
+
+

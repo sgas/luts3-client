@@ -7,7 +7,7 @@ Author: Henrik Thostrup Jensen <thostrup@gmail.com>
 """
 
 import json
-from urllib import urlencode
+import urllib
 
 
 from twisted.python import log
@@ -29,6 +29,12 @@ DESIGN    = '_design'
 
 
 # errors
+
+class DatabaseUnavailableError(Exception):
+    """
+    Raised when a contacted database is not available.
+    """
+
 
 class NoSuchDocumentError(Exception):
     """
@@ -92,6 +98,22 @@ def httpRequest(url, method, data=None):
 
 
 
+def couchRequest(url, method, data=None):
+    """
+    Wrapper for making http request to couchdb, which only errs out on real
+    errors (and not every non-200 response).
+    """
+    def handleResponse(result, factory):
+        if hasattr(factory, 'status'):
+            return result
+        raise DatabaseUnavailableError(result.getErrorMessage())
+
+    d, f = httpRequest(url, method, data)
+    d.addBoth(handleResponse, f)
+    return d, f
+
+
+
 # class definitions
 
 class CouchDB:
@@ -107,15 +129,15 @@ class CouchDB:
         def handleResponse(result, factory):
             if factory.status == '201':
                 return Database(self.url + db_name)
-            log.msg("Error creating CouchDB database (%s)" % result)
+            log.msg("Error creating CouchDB database (%s)" % result, system='sgas.CouchDB')
             if factory.status == '409':
                 e = DatabaseAlreadyExistsError('Database with name %s already exists' % db_name)
                 return defer.fail(e)
             e = UnhandledResponseError('Unhandled response. Response code: %s' % factory.status)
             return defer.fail(e)
 
-        d, f = httpRequest(self.url + db_name, method='PUT')
-        d.addBoth(handleResponse, f)
+        d, f = couchRequest(self.url + db_name, method='PUT')
+        d.addCallback(handleResponse, f)
         return d
 
 
@@ -131,8 +153,8 @@ class CouchDB:
             e = UnhandledResponseError('Unhandled response. Response code: %s' % factory.status)
             return defer.fail(e)
 
-        d, f = httpRequest(self.url + db_name, method='DELETE')
-        d.addBoth(handleResponse, f)
+        d, f = couchRequest(self.url + db_name, method='DELETE')
+        d.addCallback(handleResponse, f)
         return d
 
 
@@ -155,8 +177,8 @@ class Database:
                 e = UnhandledResponseError('Unhandled response. Response code: %s' % factory.status)
                 return defer.fail(e)
 
-        d, f = httpRequest(self.url, 'GET')
-        d.addBoth(handleResponse, f)
+        d, f = couchRequest(self.url, 'GET')
+        d.addCallback(handleResponse, f)
         return d
 
 
@@ -167,8 +189,8 @@ class Database:
                 return json.loads(result)
             defer.fail(UnhandledResponseError('Unhandled response. Response code: %s' % factory.status))
 
-        d, f = httpRequest(self.url + ALL_DOCS, method='GET')
-        d.addBoth(handleResponse, f)
+        d, f = couchRequest(self.url + ALL_DOCS, method='GET')
+        d.addCallback(handleResponse, f)
         return d
 
     # single document commands
@@ -182,8 +204,8 @@ class Database:
                 return defer.fail(NoSuchDocumentError('No such document (%s) in database' % doc_id))
             return defer.fail(UnhandledResponseError('Unhandled response. Response code: %s' % factory.status))
 
-        d, f = httpRequest(self.url + doc_id, method='GET')
-        d.addBoth(handleResponse, f)
+        d, f = couchRequest(self.url + doc_id, method='GET')
+        d.addCallback(handleResponse, f)
         return d
 
 
@@ -192,20 +214,20 @@ class Database:
         def handleResponse(result, factory):
             if factory.status == '201':
                 return json.loads(result)
-            log.msg("Error creating document (%s)" % result)
+            log.msg("Error creating document (%s)" % result, system='sgas.Database')
             if factory.status == '409':
                 return defer.fail(DatabaseAlreadyExistsError('Document with name %s already exists' % doc_id))
             return defer.fail(UnhandledResponseError('Unhandled response. Response code: %s' % factory.status))
 
         payload = json.dumps(doc)
         if doc_id is None and ID_KEY not in doc:
-            d, f = httpRequest(self.url, method='POST', data=payload)
+            d, f = couchRequest(self.url, method='POST', data=payload)
         else:
             if not doc_id:
                 doc_id = str(doc[ID_KEY])
-            d, f = httpRequest(self.url + doc_id, method='PUT', data=payload)
+            d, f = couchRequest(self.url + doc_id, method='PUT', data=payload)
 
-        d.addBoth(handleResponse, f)
+        d.addCallback(handleResponse, f)
         return d
 
 
@@ -217,26 +239,44 @@ class Database:
 
         # deal with doc being a proper document or just a string
         if type(doc) is dict:
-            doc_id = str(doc[ID_KEY]) + '?' + urlencode({'rev':doc[REVISION_KEY]})
+            doc_id = str(doc[ID_KEY]) + '?' + urllib.urlencode({'rev':doc[REVISION_KEY]})
         else:
             doc_id = doc
 
-        d, f = httpRequest(self.url + doc_id, method='DELETE')
+        d, f = couchRequest(self.url + doc_id, method='DELETE')
         d.addCallback(handleResponse, f)
         return d
 
     # document bulk commands
 
     # this one needs couchdb 0.9+ to work
-    def retrieveDocuments(self, docs):
+    # doc_ids should be an array of wanted keys
+    def retrieveDocuments(self, doc_ids=None, startkey=None, endkey=None):
 
         def handleResponse(result, factory):
-            print factory.status
-            print result
+            if factory.status == '200':
+                return json.loads(result)
+            log.msg("Error fetching documents", system='sgas.Database')
+            return defer.fail(UnhandledResponseError('Unhandled response. Response code: %s' % factory.status))
 
-        payload = json.dumps({'keys': docs})
-        d, f = httpRequest(self.url + ALL_DOCS + '?include_docs=true', method='GET', data=payload)
-        d.addBoth(handleResponse, f)
+        request_url = self.url + ALL_DOCS + '?include_docs=true'
+        payload = None
+
+        if doc_ids is not None:
+            assert startkey is None, 'Cannot specify doc_ids and startkey'
+            assert endkey   is None, 'Cannot specify doc_ids and endkey'
+            payload = json.dumps({'keys': doc_ids})
+
+        if startkey is not None:
+            assert doc_ids is None, 'Cannot use doc_ids with startkey'
+            request_url += '&startkey="%s"' % urllib.quote(startkey)
+
+        if endkey is not None:
+            assert doc_ids is None, 'Cannot use doc_ids with endkey'
+            request_url += '&endkey="%s"' % urllib.quote(endkey)
+
+        d, f = couchRequest(request_url, method='GET', data=payload)
+        d.addCallback(handleResponse, f)
         return d
 
 
@@ -249,21 +289,21 @@ class Database:
             return defer.fail(UnhandledResponseError('Unhandled response. Response code: %s' % factory.status))
 
         payload = json.dumps({'docs': docs })
-        d, f = httpRequest(self.url + BULK_DOCS, method='POST', data=payload)
-        d.addBoth(handleResponse, f)
+        d, f = couchRequest(self.url + BULK_DOCS, method='POST', data=payload)
+        d.addCallback(handleResponse, f)
         return d
 
     # view commands
 
     def temporaryView(self, view_definition):
         def handleResponse(result, factory):
-            if factory.status == '200':
+            if factory.status == 200:
                 return json.loads(result)
             return defer.fail(UnhandledResponseError('Unhandled response. Response code: %s' % factory.status))
 
         payload = """{ "map" : "%s" }""" % view_definition
-        d, f = httpRequest(self.url + TEMP_VIEW, method='POST', data=payload)
-        d.addBoth(handleResponse, f)
+        d, f = couchRequest(self.url + TEMP_VIEW, method='POST', data=payload)
+        d.addCallback(handleResponse, f)
         return d
 
 
@@ -275,8 +315,8 @@ class Database:
                 return defer.fail(ViewCreationError(result))
             defer.fail(UnhandledResponseError('Unhandled response. Response code: %s' % factory.status))
 
-        d, f = httpRequest(self.url + DESIGN + '/' + view_name, method='PUT', data=view_definition)
-        d.addBoth(handleResponse, f)
+        d, f = couchRequest(self.url + DESIGN + '/' + view_name, method='PUT', data=view_definition)
+        d.addCallback(handleResponse, f)
         return d
 
     # need a delete view / get view design
@@ -297,13 +337,13 @@ class Database:
         if group:
             params.append('group=true')
         if startkey is not None:
-            params.append('startkey=%s' % startkey)
+            params.append('startkey=%s' % urllib.quote(startkey))
         if endkey is not None:
-            params.append('endkey=%s' % endkey)
+            params.append('endkey=%s' % urllib.quote(endkey))
         if params:
             url += '?' + '&'.join(params)
 
-        d, f = httpRequest(url, method='GET')
-        d.addBoth(handleResponse, f)
+        d, f = couchRequest(url, method='GET')
+        d.addCallback(handleResponse, f)
         return d
 

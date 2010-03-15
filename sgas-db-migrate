@@ -65,29 +65,21 @@ def main():
     source_db = couchdb.Database(source_db_url)
     target_db = couchdb.Database(target_db_url)
 
-    total_rows = None
-    total_converted = 0
-
-    print "Fetching _id list"
-    all_keys = {}
-    all_doc_ids = yield source_db.listDocuments()
-    for row in all_doc_ids['rows']:
-        all_keys[row['key']] = 0
-    print "N _ids:", len(all_keys)
-
     # key creation
     def ejoin(*args):
         key = ''.join(args)
         return key, key + '\u9999'
 
     # construct iterator for start and endkeys
-    hex_iterator = starmap(ejoin, product(HEX_ALPHABET, repeat=2))
+    hex_iterator = starmap(ejoin, product(HEX_ALPHABET, repeat=3))
     remainder_iterator = [('g', '\u9999')]
-    key_iterator = chain(hex_iterator, remainder_iterator)
+    underscore_iterator = [('_', '_\u9999')]
+    key_iterator = chain(hex_iterator, remainder_iterator, underscore_iterator)
 
-#    for kl in itertools_product(HEX_ALPHABET, repeat=2):
-#       key = ''.join(kl)
-#    for startkey, endkey in [ ('000','000\u9999'), ('001','001\u9999') ]:
+    total_rows = None
+    total_converted = 0
+    design_docs = {}
+
     for startkey, endkey in key_iterator:
         #print startkey, endkey
         converted_records = []
@@ -100,27 +92,26 @@ def main():
         sys.stdout.flush()
         for row in docs['rows']:
             doc = row['doc']
-            all_keys[doc['_id']] += 1
-            #print doc
-            if 'record_id' in doc:
+            if row['id'].startswith('_design'): # design documents
+                del doc['_rev'] # otherwise we'll get an update conflict
+                design_docs[row['id']] = doc
+            else: # regular documents
                 converted_doc = convertRecord(doc)
-            else: # this is for design documents
-                print "D", doc
-                converted_doc = doc
-            converted_records.append(converted_doc)
+                converted_records.append(converted_doc)
+                total_converted += 1
 
-        _ = yield target_db.insertDocuments(converted_records)
-        total_converted += n_rows
+        yield target_db.insertDocuments(converted_records)
 
         sys.stdout.write('.')
         sys.stdout.flush()
 
-    print
+    print # newline after stdout writers
+    print "Creating design documents (%i)" % len(design_docs)
+    for idname, ddoc in design_docs.items():
+        yield target_db.createDocument(ddoc, doc_id=str(idname))
+        total_converted += 1
 
-    print "rows converted", total_converted
-#    for key in sorted(all_keys):
-#        if all_keys[key] == 0:
-#            print key
+    print "Documents converted", total_converted
 
     reactor.stop()
 

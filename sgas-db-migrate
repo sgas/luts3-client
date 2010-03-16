@@ -79,6 +79,7 @@ def main():
     total_rows = None
     total_converted = 0
     design_docs = {}
+    insert_def = None
 
     for startkey, endkey in key_iterator:
         #print startkey, endkey
@@ -88,7 +89,7 @@ def main():
             total_rows = docs['total_rows']
             print "Number of rows to migrate:", total_rows
         n_rows = len(docs['rows'])
-        sys.stdout.write(str(n_rows))
+        sys.stdout.write(str(n_rows) + ',')
         sys.stdout.flush()
         for row in docs['rows']:
             doc = row['doc']
@@ -100,10 +101,9 @@ def main():
                 converted_records.append(converted_doc)
                 total_converted += 1
 
-        yield target_db.insertDocuments(converted_records)
-
-        sys.stdout.write('.')
-        sys.stdout.flush()
+        if insert_def is not None:
+            yield insert_def
+        insert_def = target_db.insertDocuments(converted_records)
 
     print # newline after stdout writers
     print "Creating design documents (%i)" % len(design_docs)

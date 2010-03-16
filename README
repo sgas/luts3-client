@@ -36,3 +36,17 @@ It is recommended to create a replica database and try the operations on that
 first.
 
 
+== Migration ==
+
+The sgas-db-migrate will read all the documents from one CouchDB collection,
+transform the _id field to the new smaller format, and insert the document into
+another database.
+
+1. Stop SGAS (i.e., /etc/init.d/sgas stop)
+2. Create a new database with the web interface (http://localhost:5984/_utils/)
+3. Run the migration script, e.g,
+   ./sgas-db-migrate http://localhost:5984/db-source http://localhost:5984/db-target
+4. Change the SGAS database to use new collection (edit /etc/sgas.conf)
+5. Update SGAS to 3.1.0 or later (can be done in paralllel with running the migration script)
+6. Start SGAS.
+

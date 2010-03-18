@@ -7,7 +7,7 @@ setup(name='sgas-luts-client',
       author_email='htj@ndgf.org',
       url='http://www.sgas.se/',
       packages=['sgas', 'sgas/client'],
-      scripts=['sgas-ur-register', 'sgas-ur-update']
+      scripts=['sgas-ur-register', 'sgas-ur-update', 'sgas-db-migrate']
 
 )
 

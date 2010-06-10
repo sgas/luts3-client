@@ -1,0 +1,147 @@
+#!/usr/bin/env python
+
+# SGAS CouchDB -> PostgreSQL migration script
+#
+# This script will read all documents from a CouchDB database, and create
+# insertion statements for the PostgreSQL database (will be written to file).
+# The statements can the be used for inserting the data into a PostgreSQL
+# database with the SGAS schema.
+#
+# No changes will be done to the original database.
+#
+# usage: sgas-db-migrate http://localhost:5984/collection inserts.sql
+#        \i inserts.sql (in the postgres shell)
+
+
+import sys
+import string
+import re
+from itertools import product, starmap
+
+from twisted.internet import reactor, defer
+
+from sgas.common import couchdb
+
+
+KEY_ALPHABET = string.digits + string.ascii_letters
+
+
+stm_base = string.Template('''SELECT urcreate(
+    '$record_id',
+    '$create_time',
+    '$global_job_id',
+    '$local_job_id',
+    '$local_user_id',
+    '$global_user_name',
+    '$vo_type',
+    '$vo_issuer',
+    '$vo_name',
+    '$vo_attributes',
+    '$machine_name',
+    '$job_name',
+    '$charge',
+    '$status',
+    '$queue',
+    '$host',
+    '$node_count',
+    '$project_name',
+    '$submit_host',
+    '$start_time',
+    '$end_time',
+    '$submit_time',
+    '$cpu_duration',
+    '$wall_duration',
+    '$ksi2k_cpu_duration',
+    '$ksi2k_wall_duration',
+    '$user_time',
+    '$kernel_time',
+    '$major_page_faults',
+    '$runtime_environments',
+    '$exit_code',
+    '$insert_hostname',
+    '$insert_identity',
+    '$insert_time'
+);''')
+
+RX = re.compile('\'\$[A-Za-z0-9_]*\'')
+
+
+
+def createInsertStatement(doc):
+
+    VO_ATTRS = 'vo_attrs'
+    RUN_ENV  = 'runtime_environments'
+
+    if 'vo_attrs' in doc:
+        vo_attrs = [ [ e.get('group'), e.get('role') ] for e in doc['vo_attrs'] ]
+        doc['vo_attributes'] ='{' + ','.join([ '{' + ','.join( [ '"' + f + '"' if f else 'null' for f in e  ] ) + '}' for e in vo_attrs ]) + '}'
+
+
+    if RUN_ENV in doc:
+        run_env = doc[RUN_ENV]
+        run_env = [ str(e) for e in run_env ]
+        doc[RUN_ENV] ='{' + ','.join([ '"' + e + '"' for e in run_env ]) + '}'
+
+    stm = stm_base.safe_substitute(doc)
+    stm = RX.sub('null', stm)
+    stm = stm.replace('\n', '')
+    stm = stm.replace('  ', '')
+    return stm
+
+
+@defer.inlineCallbacks
+def main():
+
+    if len(sys.argv) < 3:
+        reactor.stop()
+        raise SystemExit("Not enough arguments")
+
+    source_db_url = sys.argv[1]
+    source_db = couchdb.Database(source_db_url)
+
+    stm_file = file(sys.argv[2], 'w')
+
+    # key creation
+    def ejoin(*args):
+        key = ''.join(args)
+        return key, key + '\u9999'
+
+    db_info = yield source_db.info()
+    total_rows = int(db_info['doc_count'])
+    print "Number of rows to migrate:", total_rows
+
+    if total_rows > 80000:
+        key_depth = 2
+    else:
+        key_depth = 1
+    key_iterator = starmap(ejoin, product(KEY_ALPHABET, repeat=key_depth))
+
+    total_converted = 0
+
+    print "There might be a lot zeros printed in the beginning, don't worry"
+    for startkey, endkey in key_iterator:
+        #print startkey, endkey
+        converted_records = []
+        docs = yield source_db.retrieveDocuments(startkey=startkey, endkey=endkey)
+        n_rows = len(docs['rows'])
+        sys.stdout.write(str(n_rows) + ',')
+        sys.stdout.flush()
+        if n_rows == 0:
+            continue
+        for row in docs['rows']:
+            doc = row['doc'] # we only do regular documents, no design docs
+            stm = createInsertStatement(doc)
+            stm_file.write(stm + "\n")
+            total_converted += 1
+
+    print
+    print "Documents converted", total_converted
+
+    reactor.stop()
+
+
+if __name__ == '__main__':
+    reactor.callWhenRunning(main)
+    reactor.run()
+
+

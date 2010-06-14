@@ -4,13 +4,25 @@ SGAS LUTS3 Client
 
 python setup.py install
 
-Or just unpack and use it from the directory.
-
+If you just need to use the scripts, you can just use them directly from
+unpacked tarball. No need to install.
 
 
 == Usage ==
 
-* To register usage records to an SGAS instance:
+There are currently for tools/script in the package:
+
+sgas-ur-register            Register usage records to an SGAS instance.
+sgas-ur-update              Upgrade the usage records format (CouchDB only).
+sgas-db-migrate             Migrate from CouchDB to another, while updating _id
+sgas-postgres-migrate       Create PostgreSQL insert statements from CouchDB.
+
+Usage of the four tools follows:
+
+
+=== sgas-ur-register ===
+
+To register usage records to an SGAS instance:
 
 sgas-ur-register <url> <urfile1> [<urfile2> ...]
 
@@ -19,10 +31,11 @@ e.g.,
 sgas-ur-register https://orval.grid.aau.dk:7143/sgas ur1.xml
 
 By default the host certificate will be used. It is possible to use other
-certs. Run "sgas-ur-register --help" for more information.
+certificates. Run "sgas-ur-register --help" for more information.
 
+=== sgas-ur-update ===
 
-* To update old document versions:
+To update old document versions:
 
 sgas-ur-update <couchdb-url>
 
@@ -30,13 +43,12 @@ e.g.,
 
 ./sgas-ur-update http://localhost:7984/usagerecords
 
-Note that it must point to the CouchDB database.
 
 It is recommended to create a replica database and try the operations on that
-first.
+first. Note: This will take for bloody ever on a big database.
 
 
-== Migration ==
+=== sgas-db-migrate ===
 
 The sgas-db-migrate will read all the documents from one CouchDB collection,
 transform the _id field to the new smaller format, and insert the document into
@@ -52,4 +64,20 @@ another collection.
 
 You probably want to perform compaction on the database, and views (must be
 done after initial generation for the views).
+
+
+=== sgas-postgres-migrate ===
+
+The script will read all documents from a CouchDB database and produce insert
+statements for the SGAS PostgreSQL schema.
+
+Usage: ./sgas-postgres-migrate <couchdb-url> <records.sql>
+
+e.g.,
+
+./sgas-postgres-migrate http://localhost:5984/usagerecords usagerecords.sql
+
+The script can be run while SGAS is still running, however usage records which
+inserted during the script is running, is not guarantied to be included. After
+the file has been created start "psql <database>" and do: \i records.sql
 

@@ -108,7 +108,7 @@ def main():
 
     db_info = yield source_db.info()
     total_rows = int(db_info['doc_count'])
-    print "Number of rows to migrate:", total_rows
+    print "Number of docs to migrate:", total_rows
 
     if total_rows > 80000:
         key_depth = 2

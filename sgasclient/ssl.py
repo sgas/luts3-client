@@ -9,7 +9,7 @@ import os
 
 from OpenSSL import SSL
 
-from sgas.client import config
+from sgasclient import config
 
 
 

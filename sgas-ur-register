@@ -2,7 +2,7 @@
 
 from twisted.internet import reactor
 
-from sgas.client import config, commands, util
+from sgasclient import config, commands, util
 
 
 

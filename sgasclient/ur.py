@@ -2,8 +2,6 @@
 Usage record related stuff.
 """
 
-import urlparse
-
 try:
     from xml.etree import cElementTree as ET
 except ImportError:

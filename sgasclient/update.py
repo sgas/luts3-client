@@ -7,7 +7,7 @@ import time
 from twisted.python import log
 from twisted.internet import defer
 
-from sgas.client import couchdb
+from sgasclient import couchdb
 
 
 
@@ -63,8 +63,6 @@ def getDocumentVersions(db_url):
 @defer.inlineCallbacks
 def updateDocuments(db_url, idvermap):
     log.msg('Starting fetch-update-save cycle')
-
-    import pprint
 
     db = couchdb.Database(db_url)
 

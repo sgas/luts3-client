@@ -20,7 +20,7 @@ from itertools import product, starmap
 
 from twisted.internet import reactor, defer
 
-from sgas.common import couchdb
+from sgasclient import couchdb
 
 
 KEY_ALPHABET = string.digits + string.ascii_letters

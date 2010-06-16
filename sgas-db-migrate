@@ -19,7 +19,7 @@ from itertools import product, chain, starmap
 
 from twisted.internet import reactor, defer
 
-from sgas.common import couchdb, baseconvert
+from sgasclient import couchdb, baseconvert
 
 
 HEX_ALPHABET = '0123456789abcdef'

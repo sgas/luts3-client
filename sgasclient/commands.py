@@ -4,11 +4,9 @@ High-level commands for the sgas client.
 
 import urlparse
 
-from OpenSSL import SSL
-
 from twisted.python import log
 
-from sgas.client import config, http, ssl, ur, update
+from sgasclient import config, http, ssl, ur, update
 
 
 

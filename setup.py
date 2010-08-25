@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 setup(name='sgas-luts-client',
-      version='3.1.2-svn',
+      version='3.3.0',
       description='SGAS LUTS Client',
       author='Henrik Thostrup Jensen',
       author_email='htj@ndgf.org',

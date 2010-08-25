@@ -44,6 +44,7 @@ stm_base = string.Template('''SELECT urcreate(
     '$queue',
     '$host',
     '$node_count',
+    '$processors',
     '$project_name',
     '$submit_host',
     '$start_time',
@@ -81,6 +82,13 @@ def createInsertStatement(doc):
         run_env = doc[RUN_ENV]
         run_env = [ str(e) for e in run_env ]
         doc[RUN_ENV] ='{' + ','.join([ '"' + e + '"' for e in run_env ]) + '}'
+
+    # SGAS 3.3 introduced processors field in order to comply with the UR
+    # standard. The processors field overtakes the node_count field, such
+    # the node_count field can be what it is supposed to be.
+    if 'processors' not in doc and 'node_count' in doc:
+        doc['processors'] = doc['node_count']
+        del doc['node_count']
 
     stm = stm_base.safe_substitute(doc)
     stm = RX.sub('null', stm)

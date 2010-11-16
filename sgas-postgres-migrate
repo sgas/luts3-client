@@ -59,6 +59,8 @@ stm_base = string.Template('''SELECT urcreate(
     '$major_page_faults',
     '$runtime_environments',
     '$exit_code',
+     NULL,
+     NULL,
     '$insert_hostname',
     '$insert_identity',
     '$insert_time'

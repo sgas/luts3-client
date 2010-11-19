@@ -4,7 +4,8 @@ Implement proper versioning schema.
 
 Add warning to sgas-ur-register if registration appears invalid.
 
-Add null download/upload fields to
+Add null download/upload fields to CouchDB -> PostgreSQL migration script in
+order to work with LUTS Service 3.4.0
 
 3.3.0
 

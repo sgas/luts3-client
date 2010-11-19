@@ -1,0 +1,12 @@
+3.4.0
+
+Implement proper versioning schema.
+
+Add warning to sgas-ur-register if registration appears invalid.
+
+Add null download/upload fields to
+
+3.3.0
+
+...
+

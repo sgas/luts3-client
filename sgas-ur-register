@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from twisted.python import log
 from twisted.internet import reactor
 
 from sgasclient import config, commands, util
@@ -12,11 +13,18 @@ def main():
     cfg.parseOptions()
     #print cfg['url'], cfg['urfiles']
 
+    if not cfg['url'].endswith('/sgas/ur'):
+        log.msg('Registration endpoint does not end with /sgas/ur, are you pointing the tool correctly?')
+
     def registrationComplete(_):
         print "Usage records registered."
 
+    def registrationError(error):
+        log.msg('Error performing registration:')
+        log.err(error)
+
     d = commands.registerUsageRecords(cfg['url'], cfg['urfiles'], cfg['key'], cfg['cert'], cfg['cadir'])
-    d.addCallback(registrationComplete)
+    d.addCallbacks(registrationComplete, registrationError)
     return d
 
 

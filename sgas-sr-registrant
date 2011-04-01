@@ -43,7 +43,7 @@ CONFIG_CERTDIR         = 'x509_cert_dir'
 CONFIG_LOG_DIR         = 'log_dir'
 CONFIG_LOG_ALL         = 'log_all'
 CONFIG_LOG_VO          = 'log_vo'
-CONFIG_UR_LIFETIME     = 'ur_lifetime'
+CONFIG_RECORD_LIFETIME = 'record_lifetime'
 CONFIG_LOGFILE         = 'registrant_logfile'
 
 # system defaults
@@ -220,13 +220,13 @@ def parseLogVO(value):
     return vo_regs
 
 
-def parseURLifeTime(value):
-    ur_lifetime_days = int(value)
-    ur_lifetime_seconds = ur_lifetime_days * (24 * 60 * 60)
-    return ur_lifetime_seconds
+def parseRecordLifeTime(value):
+    record_lifetime_days = int(value)
+    record_lifetime_seconds = record_lifetime_days * (24 * 60 * 60)
+    return record_lifetime_seconds
 
 
-def getVONamesFromUsageRecord(ur):
+def getVONamesFromRecord(record_tree):
     """
     Return the VO name element values of a usage record.
     """
@@ -235,7 +235,7 @@ def getVONamesFromUsageRecord(ur):
     # so we do it the silly way and iterate over the tree instead.
 
     vos = []
-    for e in ur.getroot():
+    for e in record_tree.getroot():
         if e.tag == SUBJECT_IDENTITY:
             for f in e:
                 if f.tag == GROUP:
@@ -253,20 +253,20 @@ def createRegistrationPointsMapping(logdir, logpoints_all, logpoints_vo):
     log.msg("Creating registration mapping (may take a little time)")
     mapping = {}
 
-    ur_dir = os.path.join(logdir, RECORD_DIRECTORY)
-    for filename in os.listdir(ur_dir):
-        filepath = os.path.join(ur_dir, filename)
+    record_dir = os.path.join(logdir, RECORD_DIRECTORY)
+    for filename in os.listdir(record_dir):
+        filepath = os.path.join(record_dir, filename)
         # skip if file is not a proper file
         if not os.path.isfile(filepath):
             continue
 
         try:
-            ur = ET.parse(filepath)
+            rec = ET.parse(filepath)
         except Exception:
             log.msg('Error parsing file %(filepath)s, continuing' % {'filepath' : filepath})
             continue
 
-        vos = getVONamesFromUsageRecord(ur)
+        vos = getVONamesFromRecord(rec)
 
         for lp in logpoints_all:
             mapping.setdefault(lp, []).append(filename)
@@ -383,15 +383,15 @@ def insertUsageRecords(url, payload, ctxFactory):
 
 
 
-def joinUsageRecordFiles(logdir, filenames):
+def joinRecordFiles(logdir, filenames):
 
-    urs = ET.Element(STORAGE_USAGE_RECORDS)
+    recs = ET.Element(STORAGE_USAGE_RECORDS)
 
     for fn in filenames:
-        ur = ET.parse(os.path.join(logdir, RECORD_DIRECTORY, fn))
-        urs.append(ur.getroot())
+        rec = ET.parse(os.path.join(logdir, RECORD_DIRECTORY, fn))
+        recs.append(rec.getroot())
 
-    return ET.tostring(urs)
+    return ET.tostring(recs)
 
 
 
@@ -406,7 +406,7 @@ def registerBatch(ep, url, logdir, filenames, ctxFactory):
         log.msg("Error during batch insertion: %s" % error.getErrorMessage())
         return error
 
-    ur_data = joinUsageRecordFiles(logdir, filenames)
+    ur_data = joinRecordFiles(logdir, filenames)
 
     d = insertUsageRecords(url, ur_data, ctxFactory)
     d.addCallbacks(insertDone, insertError)
@@ -588,10 +588,10 @@ def doMain():
 
     las = getConfigOption(cfg, CONFIG_SECTION_LOGGER, CONFIG_LOG_ALL)
     lvo = getConfigOption(cfg, CONFIG_SECTION_LOGGER, CONFIG_LOG_VO)
-    ult = getConfigOption(cfg, CONFIG_SECTION_LOGGER, CONFIG_UR_LIFETIME, DEFAULT_UR_LIFETIME)
+    rlt = getConfigOption(cfg, CONFIG_SECTION_LOGGER, CONFIG_RECORD_LIFETIME, DEFAULT_UR_LIFETIME)
     log_all = parseLogAll(las)
     log_vo  = parseLogVO(lvo)
-    ur_lifetime = parseURLifeTime(ult)
+    record_lifetime = parseRecordLifeTime(rlt)
 
     host_key  = getConfigOption(cfg, CONFIG_SECTION_COMMON, CONFIG_HOSTKEY, DEFAULT_HOSTKEY)
     host_cert = getConfigOption(cfg, CONFIG_SECTION_COMMON, CONFIG_HOSTCERT, DEFAULT_HOSTCERT)
@@ -616,7 +616,7 @@ def doMain():
     mapping = createRegistrationPointsMapping(log_dir, log_all, log_vo)
     cf = ContextFactory(host_key, host_cert, cert_dir)
     d = registerUsageRecords(mapping, log_dir, cf)
-    d.addCallback(lambda _ : deleteOldUsageRecords(log_dir, ur_lifetime))
+    d.addCallback(lambda _ : deleteOldUsageRecords(log_dir, record_lifetime))
     return d
 
 

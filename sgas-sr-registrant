@@ -262,8 +262,8 @@ def createRegistrationPointsMapping(logdir, logpoints_all, logpoints_vo):
 
         try:
             rec = ET.parse(filepath)
-        except Exception:
-            log.msg('Error parsing file %(filepath)s, continuing' % {'filepath' : filepath})
+        except Exception, e:
+            log.msg('Error parsing file %(filepath)s, (%(error)s) continuing' % {'filepath' : filepath, 'error': str(e) })
             continue
 
         vos = getVONamesFromRecord(rec)

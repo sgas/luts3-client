@@ -81,3 +81,21 @@ The script can be run while SGAS is still running, however usage records which
 inserted during the script is running, is not guarantied to be included. After
 the file has been created start "psql <database>" and do: \i records.sql
 
+
+=== sgas-sr-registrant ===
+
+Client for registering storage records to SGAS. The client will need a
+configuration file, which typically look like this:
+
+---
+[logger]
+log_dir=/var/spool/sgas/
+log_all="https://orval.grid.aau.dk:8143/sgas"
+registrant_logfile=/var/spool/sgas-sr-registrant.log
+---
+
+The log_all entry should be the only required attribute (the [logger] section
+must also be present). The configuration file is specified with -c. The client
+is typically invoked with cron at a regular interval.
+
+
